@@ -20,7 +20,7 @@ on the Cora and Pubmed datasets.
 class SupervisedGraphSage(nn.Module):
 
     def __init__(self, num_classes, enc):
-        super(SupervisedGraphSage, self).__init__()
+        super().__init__()
         self.enc = enc
         self.xent = nn.CrossEntropyLoss()
 

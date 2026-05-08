@@ -12,7 +12,7 @@ class Encoder(nn.Module):
             num_sample=10,
             base_model=None, gcn=False, cuda=False, 
             feature_transform=False): 
-        super(Encoder, self).__init__()
+        super().__init__()
 
         self.features = features
         self.feat_dim = feature_dim
