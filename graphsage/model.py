@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import init
-from torch.autograd import Variable
+import argparse
 
 import numpy as np
 import time
@@ -12,6 +12,45 @@ from collections import defaultdict
 from graphsage.encoders import Encoder
 from graphsage.aggregators import MeanAggregator
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Model Configuration')
+    
+    # 训练参数
+    parser.add_argument('--epochs', type=int, default=1,
+                        help='number of epochs to train (default: 1)')
+    parser.add_argument('--batch_size', type=int, default=512,
+                        help='minibatch size (default: 512)')
+    
+    # 模型参数
+    parser.add_argument('--dropout', type=float, default=0.0,
+                        help='dropout rate (1 - keep probability) (default: 0.0)')
+    parser.add_argument('--weight_decay', type=float, default=0.0,
+                        help='weight for l2 loss on embedding matrix (default: 0.0)')
+    
+    # GCN/GraphSAGE 参数
+    # parser.add_argument('--max_degree', type=int, default=100,
+    #                     help='maximum node degree (default: 100)')
+    parser.add_argument('--samples_1', type=int, default=25,
+                        help='number of samples in layer 1 (default: 25)')
+    parser.add_argument('--samples_2', type=int, default=10,
+                        help='number of samples in layer 2 (default: 10)')
+    parser.add_argument('--dim_1', type=int, default=128,
+                        help='Size of output dim (final is 2x this, if using concat) (default: 128)')
+    parser.add_argument('--dim_2', type=int, default=128,
+                        help='Size of output dim (final is 2x this, if using concat) (default: 128)')
+    
+    # 其他参数
+    parser.add_argument('--random_context', type=bool, default=True,
+                        help='Whether to use random context or direct edges (default: True)')
+    parser.add_argument('--neg_sample_size', type=int, default=20,
+                        help='number of negative samples (default: 20)')
+    
+    # 如果需要添加 GCN 开关
+    parser.add_argument('--gcn', action='store_true',
+                        help='Whether to use GCN (default: False)')
+    
+    return parser.parse_args()
+    
 """
 Simple supervised GraphSAGE model as well as examples running the model
 on the Cora and Pubmed datasets.
@@ -62,7 +101,7 @@ def load_cora():
             adj_lists[paper2].add(paper1)
     return feat_data, labels, adj_lists
 
-def run_cora():
+def run_cora(args):
     np.random.seed(1)
     random.seed(1)
     num_nodes = 2708
@@ -71,13 +110,14 @@ def run_cora():
     features.weight = nn.Parameter(torch.FloatTensor(feat_data), requires_grad=False)
    # features.cuda()
 
-    agg1 = MeanAggregator(features, cuda=True)
-    enc1 = Encoder(features, 1433, 128, adj_lists, agg1, gcn=True, cuda=False)
-    agg2 = MeanAggregator(lambda nodes : enc1(nodes).t(), cuda=False)
-    enc2 = Encoder(lambda nodes : enc1(nodes).t(), enc1.embed_dim, 128, adj_lists, agg2,
-            base_model=enc1, gcn=True, cuda=False)
-    enc1.num_samples = 5
-    enc2.num_samples = 5
+    agg1 = MeanAggregator(features, gcn=args.gcn, cuda=False)
+    enc1 = Encoder(features, 1433, args.dim_1, adj_lists, agg1,
+                num_sample=args.samples_1, gcn=args.gcn, cuda=False)
+    agg2 = MeanAggregator(lambda nodes : enc1(nodes).t(), gcn=args.gcn, cuda=False)
+    enc2 = Encoder(lambda nodes : enc1(nodes).t(),
+            args.dim_1, args.dim_2, adj_lists, agg2, 
+            num_sample=args.samples_2,
+            base_model=enc1, gcn=args.gcn, cuda=False)
 
     graphsage = SupervisedGraphSage(7, enc2)
 #    graphsage.cuda()
@@ -94,7 +134,7 @@ def run_cora():
         start_time = time.time()
         optimizer.zero_grad()
         loss = graphsage.loss(batch_nodes, 
-                Variable(torch.LongTensor(labels[np.array(batch_nodes)])))
+                torch.LongTensor(labels[np.array(batch_nodes)]))
         loss.backward()
         optimizer.step()
         end_time = time.time()
@@ -178,4 +218,5 @@ def run_pubmed():
     print("Average batch time:", np.mean(times))
 
 if __name__ == "__main__":
-    run_cora()
+    args = parse_args()
+    run_cora(args)
